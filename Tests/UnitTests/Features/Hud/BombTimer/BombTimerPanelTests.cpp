@@ -61,7 +61,7 @@ INSTANTIATE_TEST_SUITE_P(, BombTimerPanelHideTest, testing::Values(
 TEST_F(BombTimerPanelTest, BombTimerPanelIsCreatedCorrectly) {
     EXPECT_CALL(mockHookContext, featuresStates()).WillRepeatedly(testing::ReturnRef(featuresStates));
     EXPECT_CALL(mockHookContext, makePanelHandle(testing::_)).WillOnce(testing::ReturnRef(mockPanelHandle));
-    EXPECT_CALL(mockPanelHandle, getOrInit(testing::_)).WillOnce(testing::WithArg<0>(testing::Invoke(
+    EXPECT_CALL(mockPanelHandle, getOrInit(testing::_)).WillOnce(testing::WithArg<0>(
         [this](auto&& f) -> decltype(auto) {
             testing::StrictMock<MockHud> mockHud;
             testing::StrictMock<MockBombTimerPanelFactory> mockBombTimerPanelFactory;
@@ -81,7 +81,7 @@ TEST_F(BombTimerPanelTest, BombTimerPanelIsCreatedCorrectly) {
             EXPECT_THAT(container, testing::Ref(mockBombTimerContainerPanel));
             return container;
         }
-    )));
+    ));
     
     EXPECT_CALL(mockBombTimerContainerPanel, show());
 
