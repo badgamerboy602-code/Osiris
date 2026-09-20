@@ -193,30 +193,16 @@ inline Memory::Memory(const ClientPatternFinder& clientPatternFinder, const Engi
 static void** presentSlot = nullptr;
 static void** resetSlot = nullptr;
 {
-    HWND tmp = CreateWindowA("STATIC", "", WS_OVERLAPPED, 0, 0, 8, 8, nullptr, nullptr, nullptr, nullptr);
-    using Create9Fn = IDirect3D9*(WINAPI*)(UINT);
-    const auto create9 = reinterpret_cast<Create9Fn>(GetProcAddress(LoadLibraryA("d3d9.dll"), "Direct3DCreate9"));
-    IDirect3D9* d3d = create9(D3D_SDK_VERSION);
+    const DynamicLibrary shaderApiDx9{ "shaderapidx9.dll" };
+    const auto deviceGlobal = PatternFinder{ shaderApiDx9.getCodeSection().raw(), patternNotFoundHandler }("A1 ? ? ? ? 50 8B 08 FF 51 0C"_pat).add(1).as<std::uintptr_t>();
+    IDirect3DDevice9* realDevice = **reinterpret_cast<IDirect3DDevice9***>(deviceGlobal);
 
-    D3DPRESENT_PARAMETERS pp{};
-    pp.Windowed = TRUE;
-    pp.SwapEffect = D3DSWAPEFFECT_DISCARD;
-    pp.BackBufferFormat = D3DFMT_UNKNOWN;
-    pp.hDeviceWindow = tmp;
-
-    IDirect3DDevice9* dev = nullptr;
-    d3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_NULLREF, tmp, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &pp, &dev);
-
-    void** vtable = *reinterpret_cast<void***>(dev);
+    void** vtable = *reinterpret_cast<void***>(realDevice);
     presentSlot = &vtable[17];
     resetSlot = &vtable[16];
     DWORD oldProtect;
     VirtualProtect(presentSlot, sizeof(void*), PAGE_READWRITE, &oldProtect);
     VirtualProtect(resetSlot, sizeof(void*), PAGE_READWRITE, &oldProtect);
-
-    dev->Release();
-    d3d->Release();
-    DestroyWindow(tmp);
 }
 present = reinterpret_cast<std::uintptr_t>(&presentSlot);
 reset = reinterpret_cast<std::uintptr_t>(&resetSlot);
