@@ -4,6 +4,9 @@
 #include <cstdint>
 #include <optional>
 #include <type_traits>
+#if IS_WIN32() || IS_WIN64()
+#include <d3d9.h>
+#endif
 
 #include "CSGO/Constants/DllNames.h"
 #include "CSGO/Functions.h"
@@ -185,11 +188,38 @@ inline Memory::Memory(const ClientPatternFinder& clientPatternFinder, const Engi
     debugMsg = tier0.getFunctionAddress("Msg").template as<decltype(debugMsg)>();
 
 #if IS_WIN32() || IS_WIN64()
-    const DynamicLibrary gameOverlayRenderer{ "gameoverlayrenderer.dll" };
 
     PatternNotFoundHandler patternNotFoundHandler;
-    present = PatternFinder{ gameOverlayRenderer.getCodeSection().raw(), patternNotFoundHandler}("FF 15 ? ? ? ? 8B F0 85 FF"_pat).add(2).as<std::uintptr_t>();
-    reset = PatternFinder{ gameOverlayRenderer.getCodeSection().raw(), patternNotFoundHandler }("C7 45 ? ? ? ? ? FF 15 ? ? ? ? 8B D8"_pat).add(9).as<std::uintptr_t>();
+static void** presentSlot = nullptr;
+static void** resetSlot = nullptr;
+{
+    HWND tmp = CreateWindowA("STATIC", "", WS_OVERLAPPED, 0, 0, 8, 8, nullptr, nullptr, nullptr, nullptr);
+    using Create9Fn = IDirect3D9*(WINAPI*)(UINT);
+    const auto create9 = reinterpret_cast<Create9Fn>(GetProcAddress(LoadLibraryA("d3d9.dll"), "Direct3DCreate9"));
+    IDirect3D9* d3d = create9(D3D_SDK_VERSION);
+
+    D3DPRESENT_PARAMETERS pp{};
+    pp.Windowed = TRUE;
+    pp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    pp.BackBufferFormat = D3DFMT_UNKNOWN;
+    pp.hDeviceWindow = tmp;
+
+    IDirect3DDevice9* dev = nullptr;
+    d3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_NULLREF, tmp, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &pp, &dev);
+
+    void** vtable = *reinterpret_cast<void***>(dev);
+    presentSlot = &vtable[17];
+    resetSlot = &vtable[16];
+    DWORD oldProtect;
+    VirtualProtect(presentSlot, sizeof(void*), PAGE_READWRITE, &oldProtect);
+    VirtualProtect(resetSlot, sizeof(void*), PAGE_READWRITE, &oldProtect);
+
+    dev->Release();
+    d3d->Release();
+    DestroyWindow(tmp);
+}
+present = reinterpret_cast<std::uintptr_t>(&presentSlot);
+reset = reinterpret_cast<std::uintptr_t>(&resetSlot);
 
     clientMode = **reinterpret_cast<csgo::ClientMode***>((*reinterpret_cast<uintptr_t**>(clientInterface))[10] + 5);
     input = *reinterpret_cast<csgo::Input**>((*reinterpret_cast<uintptr_t**>(clientInterface))[16] + 1);
